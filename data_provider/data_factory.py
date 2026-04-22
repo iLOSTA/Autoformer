@@ -10,7 +10,7 @@ data_dict = {
 }
 
 
-def data_provider(args, flag):
+def data_provider(args, flag, setting=None):
     Data = data_dict[args.data]
     timeenc = 0 if args.embed != 'timeF' else 1
 
@@ -43,6 +43,7 @@ def data_provider(args, flag):
         stride=args.stride,
         user_col=args.user_col,
         split_seed=args.split_seed,
+        setting=setting
     )
     print(flag, len(data_set))
     data_loader = DataLoader(

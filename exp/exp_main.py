@@ -40,8 +40,8 @@ class Exp_Main(Exp_Basic):
             model = nn.DataParallel(model, device_ids=self.args.device_ids)
         return model
 
-    def _get_data(self, flag):
-        data_set, data_loader = data_provider(self.args, flag)
+    def _get_data(self, flag, setting=None):
+        data_set, data_loader = data_provider(self.args, flag, setting)
         
         return data_set, data_loader
 
@@ -101,10 +101,10 @@ class Exp_Main(Exp_Basic):
         return total_loss
 
     def train(self, setting):
-        train_data, train_loader = self._get_data(flag='train')
+        train_data, train_loader = self._get_data(flag='train', setting=setting)
         vali_data, vali_loader = self._get_data(flag='val')
         test_data, test_loader = self._get_data(flag='test')
-        vvv
+        
         # for inverse scaling later
         self.train_data = train_data
         
@@ -295,8 +295,8 @@ class Exp_Main(Exp_Basic):
         preds_extended = self.train_data.scaler.inverse_transform(preds_extended.reshape(-1, preds_extended.shape[-1])).reshape(preds_extended.shape)
         trues_extended = self.train_data.scaler.inverse_transform(trues_extended.reshape(-1, trues_extended.shape[-1])).reshape(trues_extended.shape)
         
-        self.save_compressed_npz(data_file=preds_extended, model_name="autoformer", save_path=folder_path + 'pred_compressed.npz')
-        self.save_compressed_npz(data_file=trues_extended, model_name="autoformer", save_path=folder_path + 'true_compressed.npz')
+        self.save_compressed_npz(data_file=preds_extended, model_name="autoformer", save_path=folder_path + 'SYNTH.npz')
+        self.save_compressed_npz(data_file=trues_extended, model_name="autoformer", save_path=folder_path + 'TEST.npz')
 
 
 

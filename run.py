@@ -1,5 +1,6 @@
 import argparse
 import os
+import uuid
 import torch
 from exp.exp_main import Exp_Main
 import random
@@ -7,7 +8,7 @@ import numpy as np
 
 
 def main():
-    fix_seed = 2021
+    fix_seed = 42
     random.seed(fix_seed)
     torch.manual_seed(fix_seed)
     np.random.seed(fix_seed)
@@ -93,15 +94,20 @@ def main():
     print('Args in experiment:')
     print(args)
 
+    run_id = str(uuid.uuid4())[:8]
+    print(f"Run ID: {run_id}")
+    
     Exp = Exp_Main
 
     if args.is_training:
         for ii in range(args.itr):
             # setting record of experiments
-            setting = '{}_{}_{}_ft{}_sl{}_ll{}_pl{}_dm{}_nh{}_el{}_dl{}_df{}_fc{}_eb{}_dt{}_{}_{}'.format(
+            setting = 'RUN-{}_{}_{}_{}_ep{}_ft{}_sl{}_ll{}_pl{}_dm{}_nh{}_el{}_dl{}_df{}_fc{}_eb{}_dt{}_{}_{}'.format(
+                run_id,
                 args.model_id,
                 args.model,
                 args.data,
+                args.train_epochs,
                 args.features,
                 args.seq_len,
                 args.label_len,
@@ -130,9 +136,11 @@ def main():
             torch.cuda.empty_cache()
     else:
         ii = 0
-        setting = '{}_{}_{}_ft{}_sl{}_ll{}_pl{}_dm{}_nh{}_el{}_dl{}_df{}_fc{}_eb{}_dt{}_{}_{}'.format(args.model_id,
+        setting = 'RUN-{}_{}_{}_{}_ep{}_ft{}_sl{}_ll{}_pl{}_dm{}_nh{}_el{}_dl{}_df{}_fc{}_eb{}_dt{}_{}_{}'.format(run_id,
+                                                                                                      args.model_id,
                                                                                                       args.model,
                                                                                                       args.data,
+                                                                                                      args.train_epochs,
                                                                                                       args.features,
                                                                                                       args.seq_len,
                                                                                                       args.label_len,

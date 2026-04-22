@@ -406,6 +406,7 @@ class Dataset_Custom(Dataset):
         user_col='user_id',
         split_seed=42,
         stride=1,
+        setting=None
     ):
         if size is None:
             self.seq_len = 24 * 4 * 4
@@ -431,7 +432,8 @@ class Dataset_Custom(Dataset):
 
         self.root_path = root_path
         self.data_path = data_path
-
+        self.setting = setting
+        
         self.user_col = user_col
         self.split_seed = split_seed
 
@@ -655,6 +657,21 @@ class Dataset_Custom(Dataset):
         else:
             raise ValueError(f"Unknown features mode: {self.features}")
 
+        # save Train data for using in evaluation
+        if self.flag == 'train':
+            # result save
+            folder_path = './results/' + self.setting + '/'
+            if not os.path.exists(folder_path):
+                os.makedirs(folder_path)
+            # enforce divisibility by seq_len + pred_len for simplicity
+            n_train = len(train_data)
+            n_train = (n_train // (self.seq_len + self.pred_len)) * (self.seq_len + self.pred_len)
+            train_data_to_save = train_data[:n_train]
+            # reshape to (num_windows, seq_len + pred_len, num_features)
+            train_data_to_save = train_data_to_save.reshape(-1, self.seq_len + self.pred_len, train_data.shape[1])
+            save_compressed_npz(data_file=train_data_to_save, model_name="autoformer", save_path=folder_path + 'TRAIN.npz')
+            
+        
         if self.scale:
             self.scaler.fit(train_data)
 
@@ -735,6 +752,60 @@ class Dataset_Custom(Dataset):
 
     def inverse_transform(self, data):
         return self.scaler.inverse_transform(data)
+
+def save_compressed_npz(
+        data_file,
+        channel_names=None,
+        model_name="par",
+        save_path="generated_samples",
+        seed=42,
+    ):
+        """
+        Save one dataset already formatted as [N, T, C] into a compressed .npz file.
+
+        Parameters
+        ----------
+        data_file : np.ndarray
+            Array of shape [N, T, C].
+        channel_names : list[str] | None
+            Optional list of channel names of length C.
+            If None, default names channel_0 ... channel_{C-1} are used.
+        model_name : str
+            Name of the model.
+        save_path : str
+            Output path, with or without '.npz'.
+        seed : int
+            Seed metadata to store in the file.
+        """
+        samples = np.asarray(data_file, dtype=np.float32)
+
+        if samples.ndim != 3:
+            raise ValueError(f"`data_file` must have shape [N, T, C], got {samples.shape}")
+
+        N, seq_len, num_channels = samples.shape
+
+        if channel_names is None:
+            channel_names = [f"channel_{i}" for i in range(num_channels)]
+        else:
+            if len(channel_names) != num_channels:
+                raise ValueError(
+                    f"len(channel_names) must equal num_channels={num_channels}, "
+                    f"got {len(channel_names)}"
+                )
+
+        if not save_path.endswith(".npz"):
+            save_path = f"{save_path}.npz"
+
+        np.savez_compressed(
+            save_path,
+            samples=samples,
+            channel_names=np.array(channel_names, dtype=object),
+            seq_len=np.int32(seq_len),
+            num_channels=np.int32(num_channels),
+            num_samples=np.int32(N),
+            model_name=model_name,
+            seed=np.int32(seed),
+        )
     
 class Dataset_Pred(Dataset):
     def __init__(self, root_path, flag='pred', size=None,
