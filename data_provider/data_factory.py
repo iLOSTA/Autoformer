@@ -39,7 +39,10 @@ def data_provider(args, flag):
         features=args.features,
         target=args.target,
         timeenc=timeenc,
-        freq=freq
+        freq=freq,
+        stride=args.stride,
+        user_col=args.user_col,
+        split_seed=args.split_seed,
     )
     print(flag, len(data_set))
     data_loader = DataLoader(

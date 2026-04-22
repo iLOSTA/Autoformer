@@ -42,6 +42,7 @@ class Exp_Main(Exp_Basic):
 
     def _get_data(self, flag):
         data_set, data_loader = data_provider(self.args, flag)
+        
         return data_set, data_loader
 
     def _select_optimizer(self):
@@ -103,7 +104,10 @@ class Exp_Main(Exp_Basic):
         train_data, train_loader = self._get_data(flag='train')
         vali_data, vali_loader = self._get_data(flag='val')
         test_data, test_loader = self._get_data(flag='test')
-
+        vvv
+        # for inverse scaling later
+        self.train_data = train_data
+        
         path = os.path.join(self.args.checkpoints, setting)
         if not os.path.exists(path):
             os.makedirs(path)
@@ -131,6 +135,8 @@ class Exp_Main(Exp_Basic):
                 batch_x = batch_x.float().to(self.device)
 
                 batch_y = batch_y.float().to(self.device)
+            
+                
                 batch_x_mark = batch_x_mark.float().to(self.device)
                 batch_y_mark = batch_y_mark.float().to(self.device)
 
@@ -180,8 +186,42 @@ class Exp_Main(Exp_Basic):
             print('loading model')
             self.model.load_state_dict(torch.load(os.path.join('./checkpoints/' + setting, 'checkpoint.pth')))
 
+        # preds = []
+        # trues = []
+        # folder_path = './test_results/' + setting + '/'
+        # if not os.path.exists(folder_path):
+        #     os.makedirs(folder_path)
+
+        # self.model.eval()
+        # with torch.no_grad():
+        #     for i, (batch_x, batch_y, batch_x_mark, batch_y_mark) in enumerate(test_loader):
+        #         batch_x = batch_x.float().to(self.device)
+        #         batch_y = batch_y.float().to(self.device)
+
+        #         batch_x_mark = batch_x_mark.float().to(self.device)
+        #         batch_y_mark = batch_y_mark.float().to(self.device)
+
+        #         outputs, batch_y = self._predict(batch_x, batch_y, batch_x_mark, batch_y_mark)
+
+        #         outputs = outputs.detach().cpu().numpy()
+        #         batch_y = batch_y.detach().cpu().numpy()
+
+        #         pred = outputs  # outputs.detach().cpu().numpy()  # .squeeze()
+        #         true = batch_y  # batch_y.detach().cpu().numpy()  # .squeeze()
+
+        #         preds.append(pred)
+        #         trues.append(true)
+        #         if i % 20 == 0:
+        #             input = batch_x.detach().cpu().numpy()
+        #             gt = np.concatenate((input[0, :, -1], true[0, :, -1]), axis=0)
+        #             pd = np.concatenate((input[0, :, -1], pred[0, :, -1]), axis=0)
+        #             visual(gt, pd, os.path.join(folder_path, str(i) + '.pdf'))
+        
         preds = []
         trues = []
+        preds_extended = []
+        trues_extended = []
+
         folder_path = './test_results/' + setting + '/'
         if not os.path.exists(folder_path):
             os.makedirs(folder_path)
@@ -197,19 +237,27 @@ class Exp_Main(Exp_Basic):
 
                 outputs, batch_y = self._predict(batch_x, batch_y, batch_x_mark, batch_y_mark)
 
-                outputs = outputs.detach().cpu().numpy()
-                batch_y = batch_y.detach().cpu().numpy()
+                # keep true context before converting
+                context = batch_x.detach().cpu().numpy()          # [B, seq_len, C]
 
-                pred = outputs  # outputs.detach().cpu().numpy()  # .squeeze()
-                true = batch_y  # batch_y.detach().cpu().numpy()  # .squeeze()
+                outputs = outputs.detach().cpu().numpy()          # [B, pred_len, C]
+                batch_y = batch_y.detach().cpu().numpy()          # [B, label_len + pred_len, C]
+
+                pred = outputs
+                true = batch_y
 
                 preds.append(pred)
                 trues.append(true)
-                if i % 20 == 0:
-                    input = batch_x.detach().cpu().numpy()
-                    gt = np.concatenate((input[0, :, -1], true[0, :, -1]), axis=0)
-                    pd = np.concatenate((input[0, :, -1], pred[0, :, -1]), axis=0)
-                    visual(gt, pd, os.path.join(folder_path, str(i) + '.pdf'))
+
+                # extract only the true future horizon
+                true_horizon = true[:, -self.args.pred_len:, :]   # [B, pred_len, C]
+
+                # prepend the true context
+                true_extended = np.concatenate([context, true_horizon], axis=1)  # [B, seq_len + pred_len, C]
+                pred_extended = np.concatenate([context, pred], axis=1)          # [B, seq_len + pred_len, C]
+
+                trues_extended.append(true_extended)
+                preds_extended.append(pred_extended)
 
         preds = np.concatenate(preds, axis=0)
         trues = np.concatenate(trues, axis=0)
@@ -217,6 +265,13 @@ class Exp_Main(Exp_Basic):
         preds = preds.reshape(-1, preds.shape[-2], preds.shape[-1])
         trues = trues.reshape(-1, trues.shape[-2], trues.shape[-1])
         print('test shape:', preds.shape, trues.shape)
+        
+        preds_extended = np.concatenate(preds_extended, axis=0)
+        trues_extended = np.concatenate(trues_extended, axis=0)
+        print('extended test shape:', preds_extended.shape, trues_extended.shape)
+        preds_extended = preds_extended.reshape(-1, preds_extended.shape[-2], preds_extended.shape[-1])
+        trues_extended = trues_extended.reshape(-1, trues_extended.shape[-2], trues_extended.shape[-1])
+        print('extended test shape:', preds_extended.shape, trues_extended.shape)
 
         # result save
         folder_path = './results/' + setting + '/'
@@ -235,9 +290,73 @@ class Exp_Main(Exp_Basic):
         np.save(folder_path + 'metrics.npy', np.array([mae, mse, rmse, mape, mspe]))
         np.save(folder_path + 'pred.npy', preds)
         np.save(folder_path + 'true.npy', trues)
+        
+        # scale back to original values and save as compressed npz for evaluation
+        preds_extended = self.train_data.scaler.inverse_transform(preds_extended.reshape(-1, preds_extended.shape[-1])).reshape(preds_extended.shape)
+        trues_extended = self.train_data.scaler.inverse_transform(trues_extended.reshape(-1, trues_extended.shape[-1])).reshape(trues_extended.shape)
+        
+        self.save_compressed_npz(data_file=preds_extended, model_name="autoformer", save_path=folder_path + 'pred_compressed.npz')
+        self.save_compressed_npz(data_file=trues_extended, model_name="autoformer", save_path=folder_path + 'true_compressed.npz')
+
+
 
         return
 
+    def save_compressed_npz(
+        self,
+        data_file,
+        channel_names=None,
+        model_name="par",
+        save_path="generated_samples",
+        seed=42,
+    ):
+        """
+        Save one dataset already formatted as [N, T, C] into a compressed .npz file.
+
+        Parameters
+        ----------
+        data_file : np.ndarray
+            Array of shape [N, T, C].
+        channel_names : list[str] | None
+            Optional list of channel names of length C.
+            If None, default names channel_0 ... channel_{C-1} are used.
+        model_name : str
+            Name of the model.
+        save_path : str
+            Output path, with or without '.npz'.
+        seed : int
+            Seed metadata to store in the file.
+        """
+        samples = np.asarray(data_file, dtype=np.float32)
+
+        if samples.ndim != 3:
+            raise ValueError(f"`data_file` must have shape [N, T, C], got {samples.shape}")
+
+        N, seq_len, num_channels = samples.shape
+
+        if channel_names is None:
+            channel_names = [f"channel_{i}" for i in range(num_channels)]
+        else:
+            if len(channel_names) != num_channels:
+                raise ValueError(
+                    f"len(channel_names) must equal num_channels={num_channels}, "
+                    f"got {len(channel_names)}"
+                )
+
+        if not save_path.endswith(".npz"):
+            save_path = f"{save_path}.npz"
+
+        np.savez_compressed(
+            save_path,
+            samples=samples,
+            channel_names=np.array(channel_names, dtype=object),
+            seq_len=np.int32(seq_len),
+            num_channels=np.int32(num_channels),
+            num_samples=np.int32(N),
+            model_name=model_name,
+            seed=np.int32(seed),
+        )
+    
     def predict(self, setting, load=False):
         pred_data, pred_loader = self._get_data(flag='pred')
 

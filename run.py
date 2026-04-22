@@ -35,6 +35,9 @@ def main():
     parser.add_argument('--seq_len', type=int, default=96, help='input sequence length')
     parser.add_argument('--label_len', type=int, default=48, help='start token length')
     parser.add_argument('--pred_len', type=int, default=96, help='prediction sequence length')
+    parser.add_argument('--stride', type=int, default=32, help='stride for data sampling')
+    parser.add_argument('--user_col', type=str, default='id', help='user column for custom dataset')
+    parser.add_argument('--split_seed', type=int, default=42, help='seed for data splitting')
 
     # model define
     parser.add_argument('--bucket_size', type=int, default=4, help='for Reformer')
@@ -61,7 +64,7 @@ def main():
 
     # optimization
     parser.add_argument('--num_workers', type=int, default=10, help='data loader num workers')
-    parser.add_argument('--itr', type=int, default=2, help='experiments times')
+    parser.add_argument('--itr', type=int, default=1, help='experiments times')
     parser.add_argument('--train_epochs', type=int, default=10, help='train epochs')
     parser.add_argument('--batch_size', type=int, default=32, help='batch size of train input data')
     parser.add_argument('--patience', type=int, default=3, help='early stopping patience')
