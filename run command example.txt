@@ -5,3 +5,6 @@ python run.py --is_training 1 --model_id wisdmA_ --model Autoformer --data custo
 Informer:
 
 python run.py --is_training 1 --model_id wisdmA_ --model Informer --data custom --root_path ./data/ --data_path wisdm_A_all_raw_data_for_other_baselines.parquet --features M --target z_gyro --freq s --d_model 128 --seq_len 128 --label_len 128 --pred_len 128 --stride 32 --enc_in 6 --dec_in 6 --c_out 6 --embed fixed --batch_size 192 --train_epochs 1 --learning_rate 1e-4
+
+WISDM A:
+python run.py --is_training 1 --model_id wisdmA_ --model Informer --data custom --root_path ./data/ --data_path wisdm_A_all_raw_data_for_other_baselines.parquet --features M --target z_gyro --freq s --seq_len 128 --label_len 128 --pred_len 128 --stride 128 --enc_in 6 --dec_in 6 --c_out 6 --embed fixed --learning_rate 1e-4 --user_col id --split_seed 42 --batch_size 192 --train_epochs 10

@@ -1,5 +1,7 @@
 import argparse
 import os
+import time
+
 import uuid
 import torch
 from exp.exp_main import Exp_Main
@@ -48,8 +50,8 @@ def main():
     parser.add_argument('--c_out', type=int, default=7, help='output size')
     parser.add_argument('--d_model', type=int, default=512, help='dimension of model')
     parser.add_argument('--n_heads', type=int, default=8, help='num of heads')
-    parser.add_argument('--e_layers', type=int, default=2, help='num of encoder layers')
-    parser.add_argument('--d_layers', type=int, default=1, help='num of decoder layers')
+    parser.add_argument('--e_layers', type=int, default=3, help='num of encoder layers')
+    parser.add_argument('--d_layers', type=int, default=3, help='num of decoder layers')
     parser.add_argument('--d_ff', type=int, default=2048, help='dimension of fcn')
     parser.add_argument('--moving_avg', type=int, default=25, help='window size of moving average')
     parser.add_argument('--factor', type=int, default=1, help='attn factor')
@@ -99,6 +101,9 @@ def main():
     
     Exp = Exp_Main
 
+    # Time it
+    start_time = time.time()
+    
     if args.is_training:
         for ii in range(args.itr):
             # setting record of experiments
@@ -160,6 +165,9 @@ def main():
         exp.test(setting, test=1)
         torch.cuda.empty_cache()
 
+    end_time = time.time()
+    print(f"Total time taken (minutes): {(end_time - start_time) / 60:.2f} minutes")
+    print("Run ID: ", run_id)
 
 if __name__ == "__main__":
     main()

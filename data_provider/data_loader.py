@@ -716,6 +716,8 @@ class Dataset_Custom(Dataset):
             # control stride based on flag. For training, use self.stride. For val/test, use stride=256 as other baselines
             if self.flag == 'train':
                 stride = self.stride
+            elif self.flag == 'val':
+                stride = 32
             else:
                 stride = 256
             if n_windows > 0:

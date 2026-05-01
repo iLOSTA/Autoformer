@@ -25,6 +25,11 @@ def data_provider(args, flag, setting=None):
         batch_size = 1
         freq = args.freq
         Data = Dataset_Pred
+    elif flag == 'val':
+        shuffle_flag = True
+        drop_last = False
+        batch_size = args.batch_size
+        freq = args.freq
     else:
         shuffle_flag = True
         drop_last = True
