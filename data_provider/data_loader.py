@@ -606,7 +606,11 @@ class Dataset_Custom(Dataset):
             df_raw = pd.read_csv(file_path)
         elif file_path.endswith('.parquet'):
             df_raw = pd.read_parquet(file_path)
-            df_raw.rename(columns={"time": "date"}, inplace=True)  
+            df_raw.rename(columns={"time": "date"}, inplace=True)
+            # currently, date is integer from 0 to len(df)-1. We convert to datetime to be compatible with time features. The actual date values do not matter as long as they are consistent and in order.
+            sampling_rate = 50  # Hz
+            start_time = pd.Timestamp("2020-01-01 00:00:00")
+            df_raw['date'] = start_time + pd.to_timedelta(df_raw['date'] / sampling_rate, unit='s')
             df_raw.drop("label", axis=1, inplace=True)
             # save as csv with same name for consistency with rest of code
             csv_path = file_path[:-8] + '.csv'
