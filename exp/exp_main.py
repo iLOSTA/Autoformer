@@ -174,7 +174,8 @@ class Exp_Main(Exp_Basic):
             if early_stopping.early_stop:
                 print("Early stopping")
                 break
-
+            
+            
             adjust_learning_rate(model_optim, epoch + 1, self.args)
 
         best_model_path = path + '/' + 'checkpoint.pth'
