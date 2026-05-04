@@ -176,7 +176,7 @@ class Exp_Main(Exp_Basic):
                 break
             
             
-            adjust_learning_rate(model_optim, epoch + 1, self.args)
+            # adjust_learning_rate(model_optim, epoch + 1, self.args)
 
         best_model_path = path + '/' + 'checkpoint.pth'
         self.model.load_state_dict(torch.load(best_model_path))
@@ -184,6 +184,7 @@ class Exp_Main(Exp_Basic):
         return
 
     def test(self, setting, test=0):
+        # test_data, test_loader = self._get_data(flag='train', setting=setting)
         test_data, test_loader = self._get_data(flag='test')
         if test:
             print('loading model')
@@ -294,6 +295,9 @@ class Exp_Main(Exp_Basic):
         np.save(folder_path + 'pred.npy', preds)
         np.save(folder_path + 'true.npy', trues)
         
+        # special case where model is loaded from checkpoint, we need to instantiate the train data to access the scaler for inverse transformation
+        if not hasattr(self, 'train_data'):
+            self.train_data, _ = self._get_data(flag='train', setting=setting)
         # scale back to original values and save as compressed npz for evaluation
         preds_extended = self.train_data.scaler.inverse_transform(preds_extended.reshape(-1, preds_extended.shape[-1])).reshape(preds_extended.shape)
         trues_extended = self.train_data.scaler.inverse_transform(trues_extended.reshape(-1, trues_extended.shape[-1])).reshape(trues_extended.shape)

@@ -606,6 +606,7 @@ class Dataset_Custom(Dataset):
             df_raw = pd.read_csv(file_path)
         elif file_path.endswith('.parquet'):
             df_raw = pd.read_parquet(file_path)
+            # print(df_raw.head())
             df_raw.rename(columns={"time": "date"}, inplace=True)
             # currently, date is integer from 0 to len(df)-1. We convert to datetime to be compatible with time features.
             # The smallest freq the model supports is second, so despite the sensor data being at ms level, we convert to seconds. 
@@ -616,7 +617,10 @@ class Dataset_Custom(Dataset):
                 df_raw["date"],
                 unit="s"
             )
-            df_raw.drop("label", axis=1, inplace=True)
+            if "label" in df_raw.columns:
+                df_raw.drop("label", axis=1, inplace=True)
+            elif "Activity" in df_raw.columns:
+                df_raw.drop("Activity", axis=1, inplace=True)
             # save as csv with same name for consistency with rest of code
             csv_path = file_path[:-8] + '.csv'
             df_raw.to_csv(csv_path, index=False)
@@ -640,6 +644,17 @@ class Dataset_Custom(Dataset):
 
         # Split users reproducibly
         unique_users = sorted(df_raw[self.user_col].unique())
+        
+        # experimenting with smaller dataset
+        # we will use 50% of the users only
+        # print("*************** USING 50% of USERS FOR FASTER TRAINING/TESTING ****************")
+        # chosen_users = unique_users[::2]
+        # unique_users = chosen_users
+        # print(f"Total unique users: {len(unique_users)*2}, Using {len(unique_users)} for this run.")
+        # print(f"Unique users: {unique_users}")
+        # print("**************************************************************************")
+        
+        
         train_users, val_users, test_users = self._split_users(unique_users)
 
         if self.flag == 'train':
