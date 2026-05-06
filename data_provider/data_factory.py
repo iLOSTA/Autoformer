@@ -1,4 +1,4 @@
-from data_provider.data_loader import Dataset_ETT_hour, Dataset_ETT_minute, Dataset_Custom, Dataset_Pred
+from data_provider.data_loader import Dataset_ETT_hour, Dataset_ETT_minute, Dataset_Custom, Dataset_Pred, Dataset_Custom_user_split
 from torch.utils.data import DataLoader
 
 data_dict = {
@@ -7,6 +7,7 @@ data_dict = {
     'ETTm1': Dataset_ETT_minute,
     'ETTm2': Dataset_ETT_minute,
     'custom': Dataset_Custom,
+    'custom_user_split': Dataset_Custom_user_split,
 }
 
 
@@ -26,7 +27,7 @@ def data_provider(args, flag, setting=None):
         freq = args.freq
         Data = Dataset_Pred
     elif flag == 'val':
-        shuffle_flag = True
+        shuffle_flag = False
         drop_last = False
         batch_size = args.batch_size
         freq = args.freq

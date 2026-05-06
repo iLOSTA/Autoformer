@@ -14,6 +14,9 @@ python run.py --is_training 1 --model_id wisdmA_ --model Autoformer --data custo
 
 python run.py --is_training 1 --model_id wisdmA_ --model Autoformer --data custom --root_path ./data/ --data_path wisdm_A_all_raw_data_for_other_baselines.parquet --features M --target z_gyro --freq s --seq_len 128 --label_len 128 --pred_len 128 --stride 128 --enc_in 6 --dec_in 6 --c_out 6 --learning_rate 1e-4 --user_col id --split_seed 42 --batch_size 32 --train_epochs 10
 
+python run.py --is_training 1 --model_id wisdmA_ --model Autoformer --data custom --root_path ./data/ --data_path wisdm_A_all_raw_data_for_other_baselines.parquet --features M --target z_gyro --freq h --seq_len 128 --label_len 128 --pred_len 128 --stride 128 --e_layers 2 --d_layers 1 --factor 3 --enc_in 6 --dec_in 6 --c_out 6 --learning_rate 1e-4 --user_col id --split_seed 42 --batch_size 32 --train_epochs 1
+python run.py --is_training 1 --model_id wisdmA_ --model Autoformer --data custom --root_path ./data/ --data_path wisdm_A_all_raw_data_for_other_baselines.parquet --features M --target z_gyro --freq h --seq_len 128 --label_len 128 --pred_len 128 --stride 1 --e_layers 2 --d_layers 1 --factor 3 --enc_in 6 --dec_in 6 --c_out 6 --learning_rate 1e-4 --user_col id --split_seed 42 --batch_size 64 --train_epochs 5
+
 
 WISDM B:
 python run.py --is_training 1 --model_id wisdmB_ --model Autoformer --data custom --root_path ./data/ --data_path wisdm_B_all_raw_data_for_other_baselines.parquet --features M --target z_gyro --freq s --seq_len 128 --label_len 128 --pred_len 128 --stride 128 --enc_in 6 --dec_in 6 --c_out 6 --learning_rate 1e-4 --user_col id --split_seed 42 --batch_size 32 --train_epochs 10
@@ -22,3 +25,13 @@ python run.py --is_training 1 --model_id wisdmB_ --model Autoformer --data custo
 mHealth:
 
 python run.py --is_training 1 --model_id mHealth4_ --model Autoformer --data custom --root_path ./data/ --data_path mhealth_wrist_activities_4_all_raw_data_for_other_baselines.parquet --features M --target arx --freq s --seq_len 128 --label_len 128 --pred_len 128 --stride 128 --enc_in 6 --dec_in 6 --c_out 6 --learning_rate 1e-4 --user_col subject --split_seed 42 --batch_size 32 --train_epochs 10
+
+
+HARTH:
+
+python run.py --is_training 1 --model_id harth13_ --model Autoformer --data custom --root_path ./data/ --data_path HARTH_activity_13_thigh_all_raw_data_for_other_baselines.parquet --features M --target thigh_z --freq h --seq_len 128 --label_len 128 --pred_len 128 --stride 128 --enc_in 3 --dec_in 3 --c_out 3 --learning_rate 1e-4 --user_col subject --split_seed 42 --batch_size 32 --train_epochs 10
+
+
+ETTh1:
+
+python -u run.py --is_training 1 --root_path ./data/ --data_path ETTh1.csv --model_id ETTh1_96_24 --model Autoformer --data ETTh1 --features M --seq_len 128 --label_len 128 --pred_len 128 --e_layers 2 --d_layers 1 --factor 3 --enc_in 7 --dec_in 7 --c_out 7 --des 'Exp' --itr 1 --train_epochs 10

@@ -11,7 +11,8 @@ warnings.filterwarnings('ignore')
 class Dataset_ETT_hour(Dataset):
     def __init__(self, root_path, flag='train', size=None,
                  features='S', data_path='ETTh1.csv',
-                 target='OT', scale=True, timeenc=0, freq='h'):
+                 target='OT', scale=True, timeenc=0, freq='h', setting=None,
+                 stride=1, user_col='user_id', split_seed=42):
         # size [seq_len, label_len, pred_len]
         # info
         if size == None:
@@ -32,6 +33,8 @@ class Dataset_ETT_hour(Dataset):
         self.scale = scale
         self.timeenc = timeenc
         self.freq = freq
+        self.setting = setting
+        self.flag = flag
 
         self.root_path = root_path
         self.data_path = data_path
@@ -53,6 +56,21 @@ class Dataset_ETT_hour(Dataset):
         elif self.features == 'S':
             df_data = df_raw[[self.target]]
 
+                # save Train data for using in evaluation
+        if self.flag == 'train':
+            # result save
+            folder_path = './results/' + self.setting + '/'
+            if not os.path.exists(folder_path):
+                os.makedirs(folder_path)
+            train_data = df_data[border1s[0]:border2s[0]]
+            # enforce divisibility by seq_len + pred_len for simplicity
+            n_train = len(train_data)
+            n_train = (n_train // (self.seq_len + self.pred_len)) * (self.seq_len + self.pred_len)
+            train_data_to_save = train_data[:n_train].values
+            # reshape to (num_windows, seq_len + pred_len, num_features)
+            train_data_to_save = train_data_to_save.reshape(-1, self.seq_len + self.pred_len, train_data.shape[1])
+            save_compressed_npz(data_file=train_data_to_save, model_name="autoformer", save_path=folder_path + 'TRAIN.npz')
+        
         if self.scale:
             train_data = df_data[border1s[0]:border2s[0]]
             self.scaler.fit(train_data.values)
@@ -386,12 +404,182 @@ class Dataset_ETT_minute(Dataset):
 #     def inverse_transform(self, data):
 #         return self.scaler.inverse_transform(data)
     
+class Dataset_Custom(Dataset):
+    def __init__(self, root_path, flag='train', size=None,
+                 features='S', data_path='ETTh1.csv',
+                 target='OT', scale=True, timeenc=0, freq='h', stride=1, user_col='user_id', split_seed=42, setting=None):
+        # size [seq_len, label_len, pred_len]
+        # info
+        if size == None:
+            self.seq_len = 24 * 4 * 4
+            self.label_len = 24 * 4
+            self.pred_len = 24 * 4
+        else:
+            self.seq_len = size[0]
+            self.label_len = size[1]
+            self.pred_len = size[2]
+        # init
+        assert flag in ['train', 'test', 'val']
+        type_map = {'train': 0, 'val': 1, 'test': 2}
+        self.set_type = type_map[flag]
 
+        self.features = features
+        self.target = target
+        self.scale = scale
+        self.timeenc = timeenc
+        self.freq = freq
+        self.setting = setting
+        self.flag = flag
+        self.user_col = user_col
+
+        # Use stride for training, but reduce val/test samples with fixed stride=256
+        if self.flag == 'train':
+            self.stride = stride
+        else:
+            self.stride = 1
+            
+        self.root_path = root_path
+        self.data_path = data_path
+        self.__read_data__()
+
+    def __read_data__(self):
+        self.scaler = StandardScaler()
+        # df_raw = pd.read_csv(os.path.join(self.root_path,
+        #                                   self.data_path))
+        file_path = os.path.join(self.root_path, self.data_path)
+        if file_path.endswith('.csv'):
+            df_raw = pd.read_csv(file_path)
+        elif file_path.endswith('.parquet'):
+            df_raw = pd.read_parquet(file_path)
+            
+            if 'time' in df_raw.columns:
+                df_raw.rename(columns={"time": "date"}, inplace=True)
+            if 'timestamp' in df_raw.columns:
+                # drop it
+                df_raw.drop('timestamp', axis=1, inplace=True)
+            
+            start_time = pd.Timestamp("2020-01-01 00:00:00")
+            unit = self.freq
+            df_raw["date"] = start_time + pd.to_timedelta(
+                df_raw["date"],
+                unit=unit
+            )
+
+            if "label" in df_raw.columns:
+                df_raw.drop("label", axis=1, inplace=True)
+            elif "Activity" in df_raw.columns:
+                df_raw.drop("Activity", axis=1, inplace=True)
+            # save as csv with same name for consistency with rest of code
+            csv_path = file_path[:-8] + '.csv'
+            df_raw.to_csv(csv_path, index=False)
+        else:
+            raise ValueError(f"Unsupported file format: {file_path}")
+        
+        '''
+        df_raw.columns: ['date', ...(other features), target feature]
+        '''
+        cols = list(df_raw.columns)
+        cols.remove(self.target)
+        cols.remove('date')
+        df_raw = df_raw[['date'] + cols + [self.target]]
+        
+        # testing with one user only if user_col is specified
+        if self.user_col is not None:
+            unique_users = df_raw[self.user_col].unique()
+            unique_users.sort()
+            np.random.seed(42)  # for reproducibility
+            selected_user = np.random.choice(unique_users)
+            df_raw = df_raw[df_raw[self.user_col] == selected_user]
+            print(f"Selected user {selected_user} for {self.flag} set with {len(df_raw)} samples.")
+        
+        # drop 'id' and 'subject' columns if they exist
+        if 'id' in df_raw.columns:
+            df_raw.drop('id', axis=1, inplace=True)
+        if 'subject' in df_raw.columns:
+            df_raw.drop('subject', axis=1, inplace=True)
+        
+        
+        # print(cols)
+        num_train = int(len(df_raw) * 0.7)
+        num_test = int(len(df_raw) * 0.2)
+        num_vali = len(df_raw) - num_train - num_test
+        border1s = [0, num_train - self.seq_len, len(df_raw) - num_test - self.seq_len]
+        border2s = [num_train, num_train + num_vali, len(df_raw)]
+        border1 = border1s[self.set_type]
+        border2 = border2s[self.set_type]
+
+        if self.features == 'M' or self.features == 'MS':
+            cols_data = df_raw.columns[1:]
+            df_data = df_raw[cols_data]
+        elif self.features == 'S':
+            df_data = df_raw[[self.target]]
+
+        if self.flag == 'train':
+            # result save
+            folder_path = './results/' + self.setting + '/'
+            if not os.path.exists(folder_path):
+                os.makedirs(folder_path)
+            train_data = df_data[border1s[0]:border2s[0]]
+            # enforce divisibility by seq_len + pred_len for simplicity
+            n_train = len(train_data)
+            n_train = (n_train // (self.seq_len + self.pred_len)) * (self.seq_len + self.pred_len)
+            train_data_to_save = train_data[:n_train].values
+            # reshape to (num_windows, seq_len + pred_len, num_features)
+            train_data_to_save = train_data_to_save.reshape(-1, self.seq_len + self.pred_len, train_data.shape[1])
+            save_compressed_npz(data_file=train_data_to_save, model_name="autoformer", save_path=folder_path + 'TRAIN.npz')
+            
+        if self.scale:
+            train_data = df_data[border1s[0]:border2s[0]]
+            self.scaler.fit(train_data.values)
+            data = self.scaler.transform(df_data.values)
+        else:
+            data = df_data.values
+
+        df_stamp = df_raw[['date']][border1:border2]
+        df_stamp['date'] = pd.to_datetime(df_stamp.date)
+        if self.timeenc == 0:
+            df_stamp['month'] = df_stamp.date.apply(lambda row: row.month, 1)
+            df_stamp['day'] = df_stamp.date.apply(lambda row: row.day, 1)
+            df_stamp['weekday'] = df_stamp.date.apply(lambda row: row.weekday(), 1)
+            df_stamp['hour'] = df_stamp.date.apply(lambda row: row.hour, 1)
+            data_stamp = df_stamp.drop(['date'], 1).values
+        elif self.timeenc == 1:
+            data_stamp = time_features(pd.to_datetime(df_stamp['date'].values), freq=self.freq)
+            data_stamp = data_stamp.transpose(1, 0)
+
+        self.data_x = data[border1:border2]
+        self.data_y = data[border1:border2]
+        self.data_stamp = data_stamp
+
+    def __getitem__(self, index):
+        s_begin = index * self.stride
+        s_end = s_begin + self.seq_len
+        r_begin = s_end - self.label_len
+        r_end = r_begin + self.label_len + self.pred_len
+
+        seq_x = self.data_x[s_begin:s_end]
+        seq_y = self.data_y[r_begin:r_end]
+        seq_x_mark = self.data_stamp[s_begin:s_end]
+        seq_y_mark = self.data_stamp[r_begin:r_end]
+
+        return seq_x, seq_y, seq_x_mark, seq_y_mark
+
+    def __len__(self):
+        n_windows = len(self.data_x) - self.seq_len - self.pred_len + 1
+
+        if n_windows <= 0:
+            return 0
+
+        return (n_windows + self.stride - 1) // self.stride
+
+    def inverse_transform(self, data):
+        return self.scaler.inverse_transform(data)
+    
 import numpy as np
 from utils.timefeatures import time_features
 
 
-class Dataset_Custom(Dataset):
+class Dataset_Custom_user_split(Dataset):
     def __init__(
         self,
         root_path,
@@ -438,102 +626,6 @@ class Dataset_Custom(Dataset):
         self.split_seed = split_seed
 
         self.__read_data__()
-
-    # def _split_users(self, unique_users):
-    #     """
-    #     Split unique users into 80/10/10 with reproducibility.
-    #     """
-    #     unique_users = np.array(unique_users)
-    #     rng = np.random.default_rng(self.split_seed)
-    #     shuffled = unique_users.copy()
-    #     rng.shuffle(shuffled)
-
-    #     n_users = len(shuffled)
-    #     if n_users < 3:
-    #         raise ValueError(
-    #             f"Need at least 3 unique users for train/val/test split, got {n_users}"
-    #         )
-
-    #     n_train = int(np.floor(0.8 * n_users))
-    #     n_val = int(np.floor(0.1 * n_users))
-    #     n_test = n_users - n_train - n_val
-
-    #     # Make sure val/test are non-empty when possible
-    #     if n_val == 0:
-    #         n_val = 1
-    #         n_train -= 1
-    #     if n_test == 0:
-    #         n_test = 1
-    #         n_train -= 1
-
-    #     # Safety
-    #     if n_train <= 0:
-    #         raise ValueError(
-    #             f"Invalid split sizes after adjustment: "
-    #             f"train={n_train}, val={n_val}, test={n_test}"
-    #         )
-
-    #     train_users = shuffled[:n_train]
-    #     val_users = shuffled[n_train:n_train + n_val]
-    #     test_users = shuffled[n_train + n_val:]
-        
-    #     return set(train_users), set(val_users), set(test_users)
-    
-    # def _split_users(self, unique_users):
-    #     """
-    #     Split unique users into:
-    #     - 1 user for validation
-    #     - 10% of the remaining users for testing
-    #     - the rest for training
-
-    #     Uses self.split_seed for reproducibility.
-    #     """
-    #     unique_users = np.array(unique_users)
-    #     rng = np.random.default_rng(self.split_seed)
-    #     shuffled = unique_users.copy()
-    #     rng.shuffle(shuffled)
-
-    #     n_users = len(shuffled)
-    #     if n_users < 3:
-    #         raise ValueError(
-    #             f"Need at least 3 unique users for train/val/test split, got {n_users}"
-    #         )
-
-    #     # Fixed validation size
-    #     n_val = 1
-
-    #     # Remaining users after taking validation
-    #     remaining = n_users - n_val
-
-    #     # 10% of remaining for test
-    #     n_test = int(np.floor(0.1 * remaining))
-
-    #     # Ensure test is non-empty when possible
-    #     if n_test == 0:
-    #         n_test = 1
-
-    #     n_train = n_users - n_val - n_test
-
-    #     if n_train <= 0:
-    #         raise ValueError(
-    #             f"Invalid split sizes after adjustment: "
-    #             f"train={n_train}, val={n_val}, test={n_test}"
-    #         )
-
-    #     val_users = shuffled[:n_val]
-    #     test_users = shuffled[n_val:n_val + n_test]
-    #     train_users = shuffled[n_val + n_test:]
-
-    #     # print("-" * 50)
-    #     # print("AutoFormer Dataset User Split:")
-    #     # print(f"Total users: {n_users}, Train: {len(train_users)}, Val: {len(val_users)}, Test: {len(test_users)}")
-    #     # print(f"Train users: {train_users}")
-    #     # print(f"Val users: {val_users}")
-    #     # print(f"Test users: {test_users}")
-    #     # print(f"Split seed: {self.split_seed}")
-    #     # print("-" * 50)
-        
-    #     return set(train_users), set(val_users), set(test_users)
     
     def _split_users(self, unique_users):
         unique_users = np.sort(np.array(unique_users))
@@ -562,15 +654,6 @@ class Dataset_Custom(Dataset):
         val_users = shuffled[:n_val]
         test_users = shuffled[n_val:n_val + n_test]
         train_users = shuffled[n_val + n_test:]
-
-        # print("-" * 50)
-        # print("AutoFormer Dataset User Split:")
-        # print(f"Total users: {n_users}, Train: {len(train_users)}, Val: {len(val_users)}, Test: {len(test_users)}")
-        # print(f"Train users: {train_users}")
-        # print(f"Val users: {val_users}")
-        # print(f"Test users: {test_users}")
-        # print(f"Split seed: {self.split_seed}")
-        # print("-" * 50)
         
         return set(train_users), set(val_users), set(test_users)
 
@@ -606,17 +689,35 @@ class Dataset_Custom(Dataset):
             df_raw = pd.read_csv(file_path)
         elif file_path.endswith('.parquet'):
             df_raw = pd.read_parquet(file_path)
-            # print(df_raw.head())
-            df_raw.rename(columns={"time": "date"}, inplace=True)
+            
+            if 'time' in df_raw.columns:
+                df_raw.rename(columns={"time": "date"}, inplace=True)
+            if 'timestamp' in df_raw.columns:
+                # drop it
+                df_raw.drop('timestamp', axis=1, inplace=True)
+
             # currently, date is integer from 0 to len(df)-1. We convert to datetime to be compatible with time features.
             # The smallest freq the model supports is second, so despite the sensor data being at ms level, we convert to seconds. 
             # This should not cause issues since time features are based on calendar time, not elapsed time.
+            # start_time = pd.Timestamp("2020-01-01 00:00:00")
+            # unit = self.freq
+            # df_raw["date"] = start_time + pd.to_timedelta(
+            #     df_raw["date"],
+            #     unit=unit
+            # )
+            
             start_time = pd.Timestamp("2020-01-01 00:00:00")
+            unit = self.freq
+            sampling_rate = 50
+            df_raw = df_raw.sort_values([self.user_col]).copy()
+
+            sample_idx = df_raw.groupby(self.user_col).cumcount()
 
             df_raw["date"] = start_time + pd.to_timedelta(
-                df_raw["date"],
-                unit="s"
+                sample_idx / sampling_rate,
+                unit=unit
             )
+
             if "label" in df_raw.columns:
                 df_raw.drop("label", axis=1, inplace=True)
             elif "Activity" in df_raw.columns:
@@ -644,16 +745,11 @@ class Dataset_Custom(Dataset):
 
         # Split users reproducibly
         unique_users = sorted(df_raw[self.user_col].unique())
-        
-        # experimenting with smaller dataset
-        # we will use 50% of the users only
-        # print("*************** USING 50% of USERS FOR FASTER TRAINING/TESTING ****************")
-        # chosen_users = unique_users[::2]
-        # unique_users = chosen_users
-        # print(f"Total unique users: {len(unique_users)*2}, Using {len(unique_users)} for this run.")
-        # print(f"Unique users: {unique_users}")
-        # print("**************************************************************************")
-        
+
+        # experiment with 20% data
+        # unique_users = unique_users[:max(1, int(0.2 * len(unique_users)))]
+        # print(f"Total unique users: {len(df_raw[self.user_col].unique())}, using {len(unique_users)} for this experiment.")
+        # print(f"Unique users in this split: {unique_users}")
         
         train_users, val_users, test_users = self._split_users(unique_users)
 
