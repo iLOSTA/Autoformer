@@ -1,0 +1,54 @@
+{
+  "activation_dropout": 0.1,
+  "activation_function": "gelu",
+  "architectures": [
+    "AutoformerForPrediction"
+  ],
+  "attention_dropout": 0.1,
+  "autocorrelation_factor": 5,
+  "cardinality": [
+    0
+  ],
+  "context_length": 128,
+  "d_model": 64,
+  "decoder_attention_heads": 4,
+  "decoder_ffn_dim": 128,
+  "decoder_layerdrop": 0.1,
+  "decoder_layers": 2,
+  "distribution_output": "student_t",
+  "dropout": 0.1,
+  "dtype": "float32",
+  "embedding_dimension": [
+    0
+  ],
+  "encoder_attention_heads": 4,
+  "encoder_ffn_dim": 128,
+  "encoder_layerdrop": 0.1,
+  "encoder_layers": 2,
+  "feature_size": 55,
+  "init_std": 0.02,
+  "input_size": 6,
+  "is_encoder_decoder": true,
+  "label_length": 10,
+  "lags_sequence": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    10,
+    20
+  ],
+  "loss": "nll",
+  "model_type": "autoformer",
+  "moving_average": 7,
+  "num_dynamic_real_features": 0,
+  "num_parallel_samples": 100,
+  "num_static_categorical_features": 0,
+  "num_static_real_features": 0,
+  "num_time_features": 1,
+  "prediction_length": 128,
+  "scaling": "std",
+  "transformers_version": "5.8.0",
+  "use_cache": true
+}

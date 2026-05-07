@@ -16,6 +16,7 @@ python run.py --is_training 1 --model_id wisdmA_ --model Autoformer --data custo
 
 python run.py --is_training 1 --model_id wisdmA_ --model Autoformer --data custom --root_path ./data/ --data_path wisdm_A_all_raw_data_for_other_baselines.parquet --features M --target z_gyro --freq h --seq_len 128 --label_len 128 --pred_len 128 --stride 128 --e_layers 2 --d_layers 1 --factor 3 --enc_in 6 --dec_in 6 --c_out 6 --learning_rate 1e-4 --user_col id --split_seed 42 --batch_size 32 --train_epochs 1
 python run.py --is_training 1 --model_id wisdmA_ --model Autoformer --data custom --root_path ./data/ --data_path wisdm_A_all_raw_data_for_other_baselines.parquet --features M --target z_gyro --freq h --seq_len 128 --label_len 128 --pred_len 128 --stride 1 --e_layers 2 --d_layers 1 --factor 3 --enc_in 6 --dec_in 6 --c_out 6 --learning_rate 1e-4 --user_col id --split_seed 42 --batch_size 64 --train_epochs 5
+python run.py --is_training 1 --model_id wisdmA_ --model Autoformer --data custom --root_path ./data/ --data_path wisdm_A_all_raw_data_for_other_baselines.parquet --features M --target z_gyro --freq h --seq_len 128 --label_len 128 --pred_len 128 --stride 1 --e_layers 2 --d_layers 1 --factor 7 --enc_in 6 --dec_in 6 --c_out 6 --learning_rate 1e-4 --user_col id --split_seed 42 --batch_size 32 --train_epochs 5
 
 
 WISDM B:
@@ -35,3 +36,13 @@ python run.py --is_training 1 --model_id harth13_ --model Autoformer --data cust
 ETTh1:
 
 python -u run.py --is_training 1 --root_path ./data/ --data_path ETTh1.csv --model_id ETTh1_96_24 --model Autoformer --data ETTh1 --features M --seq_len 128 --label_len 128 --pred_len 128 --e_layers 2 --d_layers 1 --factor 3 --enc_in 7 --dec_in 7 --c_out 7 --des 'Exp' --itr 1 --train_epochs 10
+
+
+HuggingFace Autoformer
+
+WISDM A:
+python train_hf_autoformer_har.py ^  --parquet_path "data/wisdm_A_all_raw_data_for_other_baselines.parquet" ^  --target_cols x_acc,y_acc,z_acc,x_gyro,y_gyro,z_gyro ^  --id_col id ^  --time_col time ^  --context_length 128 ^  --prediction_length 128 ^  --lags_sequence 1,2,3,4,5,10,20 ^  --split_seed 42 ^  --train_stride 64 ^  --eval_stride 256 ^  --batch_size 32 ^ --generation_batch_size 4 ^ --num_parallel_samples 20 ^ --export_num_parallel_samples 1 ^ --num_sample_paths 3  ^  --moving_average 7 ^  --autocorrelation_factor 5 ^  --learning_rate 1e-4 ^  --output_dir runs_hf_autoformer_har ^  --epochs 10
+python train_hf_autoformer_har.py ^  --parquet_path "data/wisdm_A_all_raw_data_for_other_baselines.parquet" ^  --target_cols x_acc,y_acc,z_acc,x_gyro,y_gyro,z_gyro ^  --id_col id ^  --time_col time ^  --context_length 128 ^  --prediction_length 128 ^  --lags_sequence 1,2,3,4,5,10,20 ^  --split_seed 42 ^  --train_stride 32 ^  --eval_stride 256 ^  --batch_size 32 ^  --generation_batch_size 4 ^  --num_parallel_samples 20 ^  --export_num_parallel_samples 1 ^  --num_sample_paths 3 ^  --d_model 128 ^  --encoder_layers 2 ^  --decoder_layers 2 ^  --encoder_attention_heads 4 ^  --decoder_attention_heads 4 ^  --encoder_ffn_dim 256 ^  --decoder_ffn_dim 256 ^  --moving_average 7 ^  --autocorrelation_factor 5 ^  --dropout 0.1 ^  --attention_dropout 0.1 ^  --activation_dropout 0.1 ^  --learning_rate 1e-4 ^  --output_dir runs_hf_autoformer_har ^  --epochs 15
+
+WISDM B:
+python train_hf_autoformer_har.py ^  --parquet_path "data/wisdm_B_all_raw_data_for_other_baselines.parquet" ^  --target_cols x_acc,y_acc,z_acc,x_gyro,y_gyro,z_gyro ^  --id_col id ^  --time_col time ^  --context_length 128 ^  --prediction_length 128 ^  --lags_sequence 1,2,3,4,5,10,20 ^  --split_seed 42 ^  --train_stride 64 ^  --eval_stride 256 ^  --batch_size 32 ^ --generation_batch_size 4 ^ --num_parallel_samples 20 ^ --export_num_parallel_samples 1 ^ --num_sample_paths 3  ^  --moving_average 7 ^  --autocorrelation_factor 5 ^  --learning_rate 1e-4 ^  --output_dir runs_hf_autoformer_har ^  --epochs 10

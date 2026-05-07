@@ -488,9 +488,11 @@ class Dataset_Custom(Dataset):
             unique_users = df_raw[self.user_col].unique()
             unique_users.sort()
             np.random.seed(42)  # for reproducibility
-            selected_user = np.random.choice(unique_users)
+            # selected_user = np.random.choice(unique_users)
+            selected_user = "A_1648"
             df_raw = df_raw[df_raw[self.user_col] == selected_user]
             print(f"Selected user {selected_user} for {self.flag} set with {len(df_raw)} samples.")
+            
         
         # drop 'id' and 'subject' columns if they exist
         if 'id' in df_raw.columns:
@@ -745,11 +747,6 @@ class Dataset_Custom_user_split(Dataset):
 
         # Split users reproducibly
         unique_users = sorted(df_raw[self.user_col].unique())
-
-        # experiment with 20% data
-        # unique_users = unique_users[:max(1, int(0.2 * len(unique_users)))]
-        # print(f"Total unique users: {len(df_raw[self.user_col].unique())}, using {len(unique_users)} for this experiment.")
-        # print(f"Unique users in this split: {unique_users}")
         
         train_users, val_users, test_users = self._split_users(unique_users)
 
