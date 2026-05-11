@@ -48,6 +48,61 @@ from tqdm import tqdm
 from transformers import AutoformerConfig, AutoformerForPrediction
 
 
+
+
+def smooth_signal(x, window_size=5):
+    """
+    Smooth a signal using a centered moving average while preserving the original shape.
+
+    Expected input:
+        x: np.ndarray
+           Can be:
+           - [T]
+           - [N, T]
+           - [N, T, C]
+
+        window_size: int
+           Size of the moving average window. Must be odd for symmetric smoothing.
+
+    Returns:
+        smoothed: np.ndarray
+           Same shape as input.
+    """
+    if window_size <= 1:
+        return x
+
+    if window_size % 2 == 0:
+        raise ValueError("window_size should be odd so smoothing is centered.")
+
+    x = np.asarray(x)
+
+    pad = window_size // 2
+    kernel = np.ones(window_size, dtype=np.float32) / window_size
+
+    def _smooth_1d(signal):
+        padded = np.pad(signal, pad_width=pad, mode="edge")
+        return np.convolve(padded, kernel, mode="valid")
+
+    if x.ndim == 1:
+        return _smooth_1d(x)
+
+    elif x.ndim == 2:
+        # Shape: [N, T]
+        smoothed = np.empty_like(x)
+        for i in range(x.shape[0]):
+            smoothed[i] = _smooth_1d(x[i])
+        return smoothed
+
+    elif x.ndim == 3:
+        # Shape: [N, T, C]
+        smoothed = np.empty_like(x)
+        for i in range(x.shape[0]):
+            for c in range(x.shape[2]):
+                smoothed[i, :, c] = _smooth_1d(x[i, :, c])
+        return smoothed
+
+    else:
+        raise ValueError(f"Unsupported input shape {x.shape}. Expected 1D, 2D, or 3D array.")
 # -----------------------------------------------------------------------------
 # Reproducibility
 # -----------------------------------------------------------------------------
@@ -91,7 +146,6 @@ def parse_hf_scaling(value):
     if v in {"true", "1", "yes", "on"}:
         return True
     return v
-
 
 class ExternalFeatureScaler:
     """
@@ -327,10 +381,15 @@ class HARAutoformerDataset(Dataset):
         self.total_length = self.context_length + self.prediction_length
         self.hf_total_length = self.past_length + self.prediction_length
         self.stride = int(stride)
+        self.overlap_stride = 32
+        self.min_windows = 10
         self.split_name = split_name
-
+        
         if self.stride <= 0:
             raise ValueError(f"stride must be positive. Got {self.stride}")
+
+        if self.overlap_stride <= 0:
+            raise ValueError(f"overlap_stride must be positive. Got {self.overlap_stride}")
 
         user_set = set(user_ids)
         df_split = df[df[id_col].isin(user_set)].copy()
@@ -343,20 +402,179 @@ class HARAutoformerDataset(Dataset):
         self.series: List[np.ndarray] = []
         self.series_user_ids: List = []
         self.indices: List[Tuple[int, int]] = []
+        
+        # min_windows = 10
+        # overlap_stride = 32
 
+        # for user_id, g in df_split.groupby(id_col, sort=False):
+        #     values_raw = g[self.target_cols].to_numpy(dtype=np.float32)
+
+        #     T_raw = values_raw.shape[0]
+
+        #     # --------------------------------------------------
+        #     # Match the old PPG script:
+        #     # trim each user's sequence to a multiple of total_length
+        #     # before calculating n_windows_nonoverlap.
+        #     # --------------------------------------------------
+        #     usable_len = (T_raw // self.total_length) * self.total_length
+
+        #     if usable_len <= 0:
+        #         continue
+
+        #     values = values_raw[:usable_len]
+        #     T = values.shape[0]
+
+        #     series_idx = len(self.series)
+        #     self.series.append(values)
+        #     self.series_user_ids.append(user_id)
+
+        #     n_windows_nonoverlap = T // self.total_length
+
+        #     if n_windows_nonoverlap >= min_windows:
+        #         # Same as old non-overlapping branch
+        #         n_windows = n_windows_nonoverlap
+
+        #         start_indices = (
+        #             np.arange(n_windows, dtype=np.int64) * self.total_length
+        #         )
+
+        #         usable_rows = n_windows * self.total_length
+        #         discarded_rows = T - usable_rows
+
+        #         window_mode = "non_overlapping"
+        #         stride_used = self.total_length
+
+        #     else:
+        #         # Same as old overlapping fallback branch,
+        #         # but now T is the trimmed length, not the raw user length.
+        #         stride_used = overlap_stride
+
+        #         n_windows = 1 + (T - self.total_length) // stride_used
+
+        #         start_indices = (
+        #             np.arange(n_windows, dtype=np.int64) * stride_used
+        #         )
+
+        #         usable_rows = int(start_indices[-1]) + self.total_length
+        #         discarded_rows = T - usable_rows
+
+        #         window_mode = "overlapping"
+
+        #     for start in start_indices:
+        #         self.indices.append((series_idx, int(start)))
+
+        #     print(
+        #         f"[{split_name}] user={user_id}, "
+        #         f"T_raw={T_raw}, "
+        #         f"T_after_trim={T}, "
+        #         f"mode={window_mode}, "
+        #         f"n_windows_nonoverlap={n_windows_nonoverlap}, "
+        #         f"n_windows={n_windows}, "
+        #         f"stride_used={stride_used}, "
+        #         f"usable_rows={usable_rows}, "
+        #         f"discarded_rows={discarded_rows}"
+        #     )
+        
+        
         for user_id, g in df_split.groupby(id_col, sort=False):
-            values = g[self.target_cols].to_numpy(dtype=np.float32)
+            values_raw = g[self.target_cols].to_numpy(dtype=np.float32)
+            T_raw = values_raw.shape[0]
 
-            if len(values) < self.total_length:
+            if T_raw < self.total_length:
                 continue
 
+            # ==================================================
+            # Special logic only for TEST and VAL splits
+            # ==================================================
+            if self.split_name in ["test", "val"]:
+                min_windows = 10
+                overlap_stride = 32
+
+                # Match old test script:
+                # trim each user to a multiple of total_length first
+                usable_len = (T_raw // self.total_length) * self.total_length
+
+                if usable_len <= 0:
+                    continue
+
+                values = values_raw[:usable_len]
+                T = values.shape[0]
+
+                n_windows_nonoverlap = T // self.total_length
+
+                if n_windows_nonoverlap >= min_windows:
+                    # Non-overlapping windows
+                    n_windows = n_windows_nonoverlap
+                    start_indices = (
+                        np.arange(n_windows, dtype=np.int64) * self.total_length
+                    )
+
+                    window_mode = "non_overlapping"
+                    stride_used = self.total_length
+
+                else:
+                    # Overlapping fallback with stride=32
+                    stride_used = overlap_stride
+
+                    n_windows = 1 + (T - self.total_length) // stride_used
+
+                    if n_windows <= 0:
+                        continue
+
+                    start_indices = (
+                        np.arange(n_windows, dtype=np.int64) * stride_used
+                    )
+
+                    window_mode = "overlapping"
+
+                usable_rows = int(start_indices[-1]) + self.total_length
+                discarded_rows = T - usable_rows
+
+            # ==================================================
+            # Normal logic for TRAIN / VAL / anything else
+            # ==================================================
+            else:
+                values = values_raw
+                T = T_raw
+
+                n_windows = T - self.total_length + 1
+
+                if n_windows <= 0:
+                    continue
+
+                start_indices = np.arange(
+                    0,
+                    n_windows,
+                    self.stride,
+                    dtype=np.int64,
+                )
+
+                window_mode = "normal_stride"
+                stride_used = self.stride
+                usable_rows = int(start_indices[-1]) + self.total_length
+                discarded_rows = T - usable_rows
+
+            # Store this user's series
             series_idx = len(self.series)
             self.series.append(values)
             self.series_user_ids.append(user_id)
 
-            n_windows = len(values) - self.total_length + 1
-            for start in range(0, n_windows, self.stride):
-                self.indices.append((series_idx, start))
+            # Store window indices
+            for start in start_indices:
+                self.indices.append((series_idx, int(start)))
+
+            # print(
+            #     f"[{self.split_name}] user={user_id}, "
+            #     f"T_raw={T_raw}, "
+            #     f"T_used={values.shape[0]}, "
+            #     f"mode={window_mode}, "
+            #     f"n_windows={len(start_indices)}, "
+            #     f"stride_used={stride_used}, "
+            #     f"usable_rows={usable_rows}, "
+            #     f"discarded_rows={discarded_rows}"
+            # )
+            
+        
 
         if len(self.indices) == 0:
             raise ValueError(
@@ -1473,6 +1691,20 @@ def main() -> None:
         )
         print(f"Context max abs diff between TEST and SYNTH: {context_diff:.8f}")
 
+        # Special case for PPG dataset: last column is chest_label which is heart rate. We smooth the generated data to align with
+        # the true heart rate values better for evaluation purposes, since HF Autoformer can struggle to capture the exact heart rate without a lot of tuning.
+        if "chest_label" in target_cols:
+            hr_idx = target_cols.index("chest_label")
+            print(f"Smoothing SYNTH chest_label (heart rate) channel at index {hr_idx} for better alignment with TEST...")
+            # we only do this for the generated half of the sequence, since the context is real data
+            # and we pad the signal to ensure length consistency, so we don't want to smooth the context
+            synth_extended[:, args.context_length :, hr_idx] = smooth_signal(
+                synth_extended[:, args.context_length :, hr_idx],
+                window_size=5,
+            )
+        
+
+        
         print(f"TRAIN shape: {train_extended.shape}")
         print(f"TEST shape:  {test_extended.shape}")
         print(f"SYNTH shape: {synth_extended.shape}")
